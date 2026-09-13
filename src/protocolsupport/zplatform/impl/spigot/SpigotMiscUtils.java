@@ -17,12 +17,12 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
-import org.bukkit.craftbukkit.v1_18_R2.CraftParticle;
-import org.bukkit.craftbukkit.v1_18_R2.CraftServer;
-import org.bukkit.craftbukkit.v1_18_R2.CraftWorld;
-import org.bukkit.craftbukkit.v1_18_R2.entity.CraftPlayer;
-import org.bukkit.craftbukkit.v1_18_R2.inventory.CraftItemStack;
-import org.bukkit.craftbukkit.v1_18_R2.util.CraftIconCache;
+import org.bukkit.craftbukkit.CraftParticle;
+import org.bukkit.craftbukkit.CraftServer;
+import org.bukkit.craftbukkit.CraftWorld;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
+import org.bukkit.craftbukkit.inventory.CraftItemStack;
+import org.bukkit.craftbukkit.util.CraftIconCache;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.CachedServerIcon;
@@ -45,20 +45,20 @@ import io.netty.channel.epoll.Epoll;
 import net.minecraft.nbt.NBTCompressedStreamTools;
 import net.minecraft.nbt.NBTReadLimiter;
 import net.minecraft.network.EnumProtocol;
-import net.minecraft.network.chat.IChatBaseComponent;
-import net.minecraft.network.chat.IChatBaseComponent.ChatSerializer;
-import net.minecraft.network.protocol.game.PacketPlayOutSetSlot;
-import net.minecraft.resources.MinecraftKey;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Component.Serializer;
+import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.dedicated.DedicatedServer;
 import net.minecraft.server.dedicated.DedicatedServerProperties;
-import net.minecraft.server.level.EntityPlayer;
-import net.minecraft.server.level.WorldServer;
-import net.minecraft.server.network.PlayerConnection;
-import net.minecraft.server.network.ServerConnection;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
+import net.minecraft.server.network.ServerConnectionListener;
 import net.minecraft.world.entity.player.PlayerInventory;
 import net.minecraft.world.inventory.ContainerPlayer;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.phys.AxisAlignedBB;
+import net.minecraft.world.phys.AABB;
 import protocolsupport.api.chat.ChatAPI;
 import protocolsupport.api.chat.components.BaseComponent;
 import protocolsupport.api.utils.NetworkState;
@@ -91,18 +91,18 @@ public class SpigotMiscUtils implements PlatformUtils {
 
 	public static final DedicatedServer SERVER = ((CraftServer) Bukkit.getServer()).getServer();
 
-	public static NetworkState protocolToNetState(EnumProtocol state) {
+	public static NetworkState protocolToNetState(ConnectionProtocol state) {
 		switch (state) {
-			case a: {
+			case HANDSHAKING: {
 				return NetworkState.HANDSHAKING;
 			}
-			case b: {
+			case PLAY: {
 				return NetworkState.PLAY;
 			}
-			case c: {
+			case STATUS: {
 				return NetworkState.STATUS;
 			}
-			case d: {
+			case LOGIN: {
 				return NetworkState.LOGIN;
 			}
 			default: {
@@ -111,19 +111,19 @@ public class SpigotMiscUtils implements PlatformUtils {
 		}
 	}
 
-	public static EnumProtocol netStateToProtocol(NetworkState state) {
+	public static ConnectionProtocol netStateToProtocol(NetworkState state) {
 		switch (state) {
 			case HANDSHAKING: {
-				return EnumProtocol.a;
+				return ConnectionProtocol.HANDSHAKING;
 			}
 			case PLAY: {
-				return EnumProtocol.b;
+				return ConnectionProtocol.PLAY;
 			}
 			case STATUS: {
-				return EnumProtocol.c;
+				return ConnectionProtocol.STATUS;
 			}
 			case LOGIN: {
-				return EnumProtocol.d;
+				return ConnectionProtocol.LOGIN;
 			}
 			default: {
 				throw new IllegalArgumentException("Unknown state " + state);
@@ -143,16 +143,16 @@ public class SpigotMiscUtils implements PlatformUtils {
 		return mojangGameProfile;
 	}
 
-	public static IChatBaseComponent toPlatformMessage(BaseComponent message) {
-		return ChatSerializer.a(ChatAPI.toJSON(message));
+	public static Component toPlatformMessage(BaseComponent message) {
+		return Serializer.fromJson(ChatAPI.toJSON(message));
 	}
 
 	@Override
 	public ConnectionImpl getConnection(Player player) {
 		if (player instanceof CraftPlayer craftPlayer) {
-			PlayerConnection connection = craftPlayer.getHandle().b;
+			ServerGamePacketListenerImpl connection = craftPlayer.getHandle().connection;
 			if (connection != null) {
-				Channel channel = connection.a.m;
+				Channel channel = connection.connection.channel;
 				if (channel != null) {
 					return ConnectionImpl.getFromChannel(channel);
 				}
@@ -170,9 +170,9 @@ public class SpigotMiscUtils implements PlatformUtils {
 		} else if (slot > 35) {
 			slot = 8 - (slot - 36);
 		}
-		EntityPlayer platformPlayer = ((CraftPlayer) player).getHandle();
-		ContainerPlayer platformPlayerContainer = platformPlayer.bU;
-		platformPlayer.b.a(new PacketPlayOutSetSlot(platformPlayerContainer.j, platformPlayerContainer.k(), slot, platformPlayerContainer.b(slot).e()));
+		ServerPlayer platformPlayer = ((CraftPlayer) player).getHandle();
+		ContainerPlayer platformPlayerContainer = platformPlayer.inventoryMenu;
+		platformPlayer.connection.send(new ClientboundContainerSetSlotPacket(platformPlayerContainer.containerId, platformPlayerContainer.getStateId(), slot, platformPlayerContainer.getSlot(slot).getItem().copy()));
 	}
 
 	@Override
